@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Todo, List } from '../types';
 
 export default function useTodos() {
@@ -14,11 +14,6 @@ export default function useTodos() {
     ];
   });
 
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
-  });
-
   useEffect(() => {
     localStorage.setItem('todos', JSON.stringify(todos));
   }, [todos]);
@@ -27,17 +22,38 @@ export default function useTodos() {
     localStorage.setItem('lists', JSON.stringify(lists));
   }, [lists]);
 
-  useEffect(() => {
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
+  const addTodo = (text: string, listId: string, userId: string) => {
+    const newTodo: Todo = {
+      id: Date.now().toString(),
+      text,
+      completed: false,
+      starred: false,
+      subtasks: [],
+      listId,
+      order: todos.length,
+      userId,
+      dueDate: '',
+      notes: '',
+    };
+    setTodos(prevTodos => [...prevTodos, newTodo]);
+  };
 
-  const updateTodos = (newTodos: Todo[]) => {
-    setTodos(newTodos);
+  const updateTodo = useCallback((updatedTodo: Todo) => {
+    setTodos(prevTodos => {
+      const newTodos = prevTodos.map(todo => 
+        todo.id === updatedTodo.id ? updatedTodo : todo
+      );
+      
+      queueMicrotask(() => {
+        localStorage.setItem('todos', JSON.stringify(newTodos));
+      });
+      
+      return newTodos;
+    });
+  }, []);
+
+  const deleteTodo = (todoId: string) => {
+    setTodos(prevTodos => prevTodos.filter(todo => todo.id !== todoId));
   };
 
   const addList = (name: string, userId: string) => {
@@ -46,26 +62,50 @@ export default function useTodos() {
       name,
       userId
     };
-    setLists([...lists, newList]);
+    setLists(prevLists => [...prevLists, newList]);
   };
 
   const deleteList = (listId: string) => {
     if (listId === 'default') return;
-    setLists(lists.filter(list => list.id !== listId));
-    setTodos(todos.filter(todo => todo.listId !== listId));
+    setLists(prevLists => prevLists.filter(list => list.id !== listId));
+    setTodos(prevTodos => prevTodos.filter(todo => todo.listId !== listId));
   };
 
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
+  const editList = (listId: string, newName: string) => {
+    const updatedLists = lists.map(list => 
+      list.id === listId ? { ...list, name: newName } : list
+    );
+    setLists(updatedLists);
+    localStorage.setItem('lists', JSON.stringify(updatedLists));
+  };
+
+  const getFilteredTodos = (listId: string) => {
+    console.log('Filtering todos for list:', listId);
+    const filtered = todos.filter(todo => {
+      if (listId === 'starred') {
+        console.log('Checking starred todo:', todo.id, todo.starred);
+        return todo.starred;
+      }
+      if (listId === 'today') {
+        const today = new Date().toISOString().split('T')[0];
+        console.log('Checking today\'s todo:', todo.id, todo.dueDate, today);
+        return todo.dueDate === today;
+      }
+      return listId === 'default' ? true : todo.listId === listId;
+    }).sort((a, b) => a.order - b.order);
+    console.log('Filtered todos:', filtered);
+    return filtered;
   };
 
   return {
     todos,
     lists,
-    darkMode,
-    updateTodos,
+    addTodo,
+    updateTodo,
+    deleteTodo,
     addList,
     deleteList,
-    toggleDarkMode
+    editList,
+    getFilteredTodos
   };
 }

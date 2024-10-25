@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { 
   Star, 
   Trash2, 
-  GripVertical, 
-  ChevronRight, 
+  ChevronUp, 
   ChevronDown,
   MessageSquare,
 } from 'lucide-react';
@@ -25,19 +22,6 @@ export function TodoItem({ todo, onUpdate, onDelete }: TodoItemProps) {
   const [showNotes, setShowNotes] = useState(false);
   const [text, setText] = useState(todo.text);
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: todo.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
   const handleSubmit = () => {
     if (text.trim()) {
       onUpdate({ ...todo, text });
@@ -45,43 +29,67 @@ export function TodoItem({ todo, onUpdate, onDelete }: TodoItemProps) {
     }
   };
 
-  const handleAddSubtask = (todoId: string, text: string) => {
+  const handleToggleComplete = () => {
     onUpdate({
       ...todo,
-      subtasks: [
-        ...todo.subtasks,
-        { id: Date.now().toString(), text, completed: false }
-      ]
+      completed: !todo.completed
     });
   };
 
-  const handleToggleSubtask = (todoId: string, subtaskId: string) => {
+  const handleStarClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const updatedTodo = {
+      ...todo,
+      starred: !todo.starred,
+      updatedAt: new Date().toISOString()
+    };
+    onUpdate(updatedTodo);
+  };
+
+  const handleDueDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onUpdate({ ...todo, dueDate: e.target.value });
+  };
+
+  const handleToggleExpand = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpanded(!expanded);
+  };
+
+  const handleToggleNotes = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowNotes(!showNotes);
+  };
+
+  const handleSubtaskAdd = (todoId: string, text: string) => {
+    const newSubtask = {
+      id: Date.now().toString(),
+      text,
+      completed: false
+    };
     onUpdate({
       ...todo,
-      subtasks: todo.subtasks.map(st =>
-        st.id === subtaskId ? { ...st, completed: !st.completed } : st
-      )
+      subtasks: [...(todo.subtasks || []), newSubtask]
     });
   };
 
-  const handleDeleteSubtask = (todoId: string, subtaskId: string) => {
-    onUpdate({
-      ...todo,
-      subtasks: todo.subtasks.filter(st => st.id !== subtaskId)
+  const handleSubtaskToggle = (todoId: string, subtaskId: string) => {
+    const updatedSubtasks = todo.subtasks.map(st => {
+      if (st.id === subtaskId) {
+        return { ...st, completed: !st.completed };
+      }
+      return st;
     });
+    onUpdate({ ...todo, subtasks: updatedSubtasks });
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="bg-white dark:bg-gray-800 rounded-lg shadow">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
       <div className="p-4 flex items-center gap-2">
-        <div {...attributes} {...listeners} className="cursor-grab">
-          <GripVertical className="text-gray-400" />
-        </div>
-        
         <input
           type="checkbox"
           checked={todo.completed}
-          onChange={() => onUpdate({ ...todo, completed: !todo.completed })}
+          onChange={handleToggleComplete}
           className="h-5 w-5 rounded border-gray-300"
         />
 
@@ -109,12 +117,13 @@ export function TodoItem({ todo, onUpdate, onDelete }: TodoItemProps) {
         <input
           type="date"
           value={todo.dueDate || ''}
-          onChange={(e) => onUpdate({ ...todo, dueDate: e.target.value })}
+          onChange={handleDueDateChange}
           className="px-2 py-1 border rounded text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
         />
 
         <button
-          onClick={() => onUpdate({ ...todo, starred: !todo.starred })}
+          onClick={handleStarClick}
+          type="button"
           className={`p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 ${
             todo.starred ? 'text-yellow-500' : 'text-gray-400'
           }`}
@@ -123,7 +132,14 @@ export function TodoItem({ todo, onUpdate, onDelete }: TodoItemProps) {
         </button>
 
         <button
-          onClick={() => setShowNotes(!showNotes)}
+          onClick={handleToggleExpand}
+          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"
+        >
+          {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+        </button>
+
+        <button
+          onClick={handleToggleNotes}
           className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"
         >
           <MessageSquare size={20} />
@@ -135,23 +151,25 @@ export function TodoItem({ todo, onUpdate, onDelete }: TodoItemProps) {
         >
           <Trash2 size={20} />
         </button>
-
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"
-        >
-          {expanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-        </button>
       </div>
 
       {expanded && (
         <div className="px-12 pb-4">
           <SubTaskList
             todoId={todo.id}
-            subtasks={todo.subtasks}
-            onAdd={handleAddSubtask}
-            onToggle={handleToggleSubtask}
-            onDelete={handleDeleteSubtask}
+            subtasks={todo.subtasks || []}
+            onAdd={handleSubtaskAdd}
+            onToggle={handleSubtaskToggle}
+            onDelete={(todoId, subtaskId) => {
+              const updatedSubtasks = todo.subtasks.filter(st => st.id !== subtaskId);
+              onUpdate({ ...todo, subtasks: updatedSubtasks });
+            }}
+            onUpdate={(todoId, subtaskId, text) => {
+              const updatedSubtasks = todo.subtasks.map(st =>
+                st.id === subtaskId ? { ...st, text } : st
+              );
+              onUpdate({ ...todo, subtasks: updatedSubtasks });
+            }}
           />
         </div>
       )}
@@ -160,7 +178,9 @@ export function TodoItem({ todo, onUpdate, onDelete }: TodoItemProps) {
         <TodoNotes
           todoId={todo.id}
           notes={todo.notes || ''}
-          onUpdate={(todoId, notes) => onUpdate({ ...todo, notes })}
+          onUpdate={(todoId, notes) => {
+            onUpdate({ ...todo, notes });
+          }}
         />
       )}
     </div>
