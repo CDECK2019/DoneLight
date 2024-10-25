@@ -21,6 +21,7 @@ export interface List {
   id: string;
   name: string;
   userId: string;
+  color?: string;
 }
 
 export interface User {

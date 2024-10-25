@@ -1,78 +1,57 @@
 import React, { useState } from 'react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
 import { TodoItem } from './TodoItem';
 import { Plus } from 'lucide-react';
 import type { Todo } from '../types';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 
 interface TodoListProps {
   todos: Todo[];
-  onTodosChange: (todos: Todo[]) => void;
-  listId?: string;
+  onAdd: (text: string) => void;
+  onUpdate: (todo: Todo) => void;
+  onDelete: (todoId: string) => void;
+  activeListId: string;
 }
 
-export default function TodoList({ todos, onTodosChange, listId = 'default' }: TodoListProps) {
+export default function TodoList({ 
+  todos, 
+  onAdd, 
+  onUpdate, 
+  onDelete,
+  activeListId 
+}: TodoListProps) {
   const [newTodoText, setNewTodoText] = useState('');
   
   const sensors = useSensors(
     useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(KeyboardSensor)
   );
+
+  const handleAddTodo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newTodoText.trim()) {
+      onAdd(newTodoText);
+      setNewTodoText('');
+    }
+  };
 
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
 
     if (active.id !== over.id) {
-      const oldIndex = todos.findIndex((todo) => todo.id === active.id);
-      const newIndex = todos.findIndex((todo) => todo.id === over.id);
-      onTodosChange(arrayMove(todos, oldIndex, newIndex));
+      const oldIndex = todos.findIndex(todo => todo.id === active.id);
+      const newIndex = todos.findIndex(todo => todo.id === over.id);
+      
+      const newTodos = arrayMove(todos, oldIndex, newIndex);
+      
+      // Update order for all todos
+      newTodos.forEach((todo, index) => {
+        onUpdate({ ...todo, order: index });
+      });
     }
   };
 
-  const handleUpdate = (updatedTodo: Todo) => {
-    const newTodos = todos.map((todo) => 
-      todo.id === updatedTodo.id ? updatedTodo : todo
-    );
-    onTodosChange(newTodos);
-  };
-
-  const handleDelete = (todoId: string) => {
-    onTodosChange(todos.filter((todo) => todo.id !== todoId));
-  };
-
-  const handleAddTodo = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newTodoText.trim()) {
-      const newTodo: Todo = {
-        id: Date.now().toString(),
-        text: newTodoText,
-        completed: false,
-        starred: false,
-        subtasks: [],
-        listId: listId,
-        order: todos.length,
-        userId: 'default',
-        dueDate: '',
-        notes: '',
-      };
-      onTodosChange([...todos, newTodo]);
-      setNewTodoText('');
-    }
-  };
+  const sortedTodos = [...todos].sort((a, b) => a.order - b.order);
 
   return (
     <div className="space-y-4">
@@ -98,14 +77,14 @@ export default function TodoList({ todos, onTodosChange, listId = 'default' }: T
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext items={todos.map(t => t.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={sortedTodos.map(t => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
-            {todos.map((todo) => (
+            {sortedTodos.map((todo) => (
               <TodoItem
                 key={todo.id}
                 todo={todo}
-                onUpdate={handleUpdate}
-                onDelete={() => handleDelete(todo.id)}
+                onUpdate={onUpdate}
+                onDelete={() => onDelete(todo.id)}
               />
             ))}
           </div>

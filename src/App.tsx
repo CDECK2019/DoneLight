@@ -1,71 +1,114 @@
-import React, { useState, useEffect } from 'react';
-import { Toaster } from 'react-hot-toast';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from './hooks/useAuth';
+import { AuthForm } from './components/AuthForm';
 import TodoList from './components/TodoList';
 import Sidebar from './components/Sidebar';
-import AuthForm from './components/AuthForm';
-import { Moon, Sun, LogOut, Lightbulb } from 'lucide-react';
 import useTodos from './hooks/useTodos';
-import useAuth from './hooks/useAuth';
-import type { Todo, List } from './types';
+import { Toaster } from 'react-hot-toast';
+import { Sun, Moon } from 'lucide-react';
+import type { List } from './types';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
-export default function App() {
+export const App: React.FC = () => {
+  const { currentUser, isLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { todos, lists, addTodo, updateTodo, deleteTodo, addList, deleteList, editList } = useTodos();
+  const [activeListId, setActiveListId] = useState('default');
   const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
+    return localStorage.getItem('darkMode') === 'true';
   });
-  const [activeListId, setActiveListId] = useState<string>('default');
-  const { currentUser, signOut } = useAuth();
-  const { todos, lists, addTodo, updateTodo, deleteTodo, addList, deleteList } = useTodos();
+
+  // Handle auth state changes
+  useEffect(() => {
+    console.log('Auth state changed:', { currentUser, isLoading });
+    if (currentUser && location.pathname === '/') {
+      navigate('/dashboard');
+    }
+  }, [currentUser, isLoading, navigate, location]);
 
   useEffect(() => {
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
     if (darkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+    localStorage.setItem('darkMode', darkMode.toString());
   }, [darkMode]);
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
   };
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      console.error('Error signing out:', error);
-    }
-  };
+  const getFilteredTodos = useCallback(() => {
+    return todos.filter(todo => {
+      switch (activeListId) {
+        case 'starred':
+          return todo.starred;
+        case 'today':
+          const today = new Date().toISOString().split('T')[0];
+          return todo.dueDate === today;
+        default:
+          return todo.listId === activeListId;
+      }
+    });
+  }, [todos, activeListId]);
+
+  const filteredTodos = useMemo(() => getFilteredTodos(), [getFilteredTodos]);
+
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  }
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       <Toaster position="bottom-right" />
-      
-      <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-        {currentUser ? (
-          <>
-            <Sidebar
-              lists={lists}
-              activeListId={activeListId}
-              onSelectList={setActiveListId}
-              onAddList={(name) => addList(name, currentUser.id)}
-              onDeleteList={deleteList}
-            />
-
-            <div className="flex-1 flex flex-col">
-              <header className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-4 flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                    <Lightbulb className="text-yellow-500 h-6 w-6" />
-                    <span className="text-xl font-semibold text-yellow-500">DoneLight</span>
+      <Routes>
+        <Route 
+          path="/" 
+          element={
+            !currentUser ? (
+              <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 dark:bg-gray-900">
+                <div className="w-full max-w-md px-4">
+                  <div className="text-center mb-8">
+                    <h1 className="text-4xl font-bold text-yellow-500">DoneLight</h1>
+                    <p className="text-gray-600 dark:text-gray-300 mt-2">
+                      Effortless Task Management
+                    </p>
                   </div>
-                  <h2 className="text-lg font-medium dark:text-white">
-                    {lists.find(l => l.id === activeListId)?.name || 'All Tasks'}
-                  </h2>
+                  <AuthForm />
                 </div>
-
-                <div className="flex items-center space-x-4">
+              </div>
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          } 
+        />
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute>
+              <Sidebar
+                lists={lists}
+                activeListId={activeListId}
+                onSelectList={setActiveListId}
+                onAddList={(name) => addList(name, currentUser?.id || 'default')}
+                onDeleteList={deleteList}
+                onEditList={editList}
+              />
+              <div className="flex-1 flex flex-col">
+                <header className="bg-white dark:bg-gray-800 border-b dark:border-gray-700 p-4 flex justify-between items-center">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <h1 className="text-4xl font-bold text-yellow-500">DoneLight</h1>
+                    </div>
+                    <h2 className="text-lg font-medium text-gray-600 dark:text-gray-300">
+                      {activeListId === 'starred' ? 'Starred Tasks' :
+                       activeListId === 'today' ? 'Today\'s Tasks' :
+                       lists.find(l => l.id === activeListId)?.name || 'My Tasks'}
+                    </h2>
+                  </div>
                   <button
                     onClick={toggleDarkMode}
                     className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -76,40 +119,23 @@ export default function App() {
                       <Moon className="h-5 w-5 text-gray-500" />
                     )}
                   </button>
-                  <button
-                    onClick={handleSignOut}
-                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    <LogOut className="h-5 w-5 text-gray-500 dark:text-gray-400" />
-                  </button>
-                </div>
-              </header>
-
-              <main className="flex-1 overflow-y-auto p-4">
-                <TodoList
-                  todos={todos.filter(todo => 
-                    activeListId === 'default' ? true : todo.listId === activeListId
-                  )}
-                  onAdd={(text) => addTodo(text, activeListId, currentUser.id)}
-                  onUpdate={updateTodo}
-                  onDelete={deleteTodo}
-                />
-              </main>
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center bg-white dark:bg-gray-800">
-            <div className="text-center mb-8">
-              <div className="flex items-center justify-center space-x-2 mb-4">
-                <Lightbulb className="text-yellow-500 h-10 w-10" />
-                <h1 className="text-4xl font-bold text-yellow-500">DoneLight</h1>
+                </header>
+                <main className="flex-1 overflow-auto p-4">
+                  <TodoList
+                    todos={filteredTodos}
+                    onAdd={(text) => addTodo(text, activeListId, currentUser?.id || 'default')}
+                    onUpdate={updateTodo}
+                    onDelete={deleteTodo}
+                    activeListId={activeListId}
+                  />
+                </main>
               </div>
-              <p className="text-gray-600 dark:text-gray-300">Effortless task management for modern minds</p>
-            </div>
-            <AuthForm />
-          </div>
-        )}
-      </div>
+            </ProtectedRoute>
+          } 
+        />
+      </Routes>
     </div>
   );
-}
+};
+
+export default App;
